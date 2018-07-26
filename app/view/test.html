@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <link rel="stylesheet" href="public/css/ol.css" type="text/css">  
+  <style type="text/css">
+    #map {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      background: url(public/img/bg_earth.png)
+    }
+  </style>
+  <script type="text/javascript"> 
+    var query = {};
+    //得到所有数据
+    function getAllCameraResource() {
+      $.get({
+        url: "/map_resource/find",
+        data: {
+          type: 'camera'
+        },
+        dataType: "json",
+        success: function (data) {
+          var resorces = [];
+          console.log(data);
+          data.forEach(function (resource) {
+            var anchor = new ol.Feature({
+              type: 'camera',
+              code: resource.code,
+              name: resource.name,
+              geometry:  new ol.geom.Point(resource.loc.coordinates)
+            });
+            console.log(anchor);
+            /*anchor.setStyle(new ol.style.Style({  //在线 
+
+            }))*/
+            anchor.setStyle(new ol.style.Style({
+              image: new ol.style.Icon({
+                src: 'public/img/resouce/camera.png',
+                scale: BaseMap.map.getView().getZoom() / 35
+              })
+            }));
+            resorces.push(anchor);
+          })
+          var layer = BaseMap.getLayerByName('camera');
+          layer.getSource().clear();
+          layer.getSource().addFeatures(resorces);
+        },
+        error: function (err) {}
+      })
+    }
+
+    //查询数据
+    function searchResource() {
+      var resourceName = $('#resourceName').val();
+
+      query = {};
+      if (resourceName.length > 0) {
+        query.name = resourceName;
+      }
+      $.get({
+        url: '/map_resource/findListCount',
+        dataType: "json",
+        data: query,
+        success: function (data) {
+          $('#reslutCount').text(data.count);
+          searchPageOption.allpage = data.count > 0 ? parseInt(data.count / searchPageOption.showItem) +
+            1 : 0;
+        }
+      })
+      query.pageIndex = 1;
+      getSearchResource()
+
+    }
+    //空间
+    function getSearchResource() {
+      searchResult.datas.length = 0;
+      $.get({
+        url: "/map_resource/findList",
+        dataType: "json",
+        data: query,
+        success: function (data) {
+          var resorces = [];
+          data.list.forEach(function (resource, index) {
+
+            searchResult.datas.push(resource);
+            var resourceFeature = new ol.Feature({
+              index: index,
+              type: 'camera',
+              code: resource.code,
+              name: resource.name,
+              geometry: resource.loc.coordinates
+            })
+
+            resourceFeature.setId(resource.zyid)
+            resourceFeature.setStyle(new ol.style.Style({
+              image: new ol.style.Icon({
+                src: 'public/img/mapPoints/u_icon_focus_' + (
+                  index) + '.png',
+                scale: 0.5,
+                snapToPixel: true,
+                anchor: [0.5, 1]
+              })
+            }))
+            resorces.push(resourceFeature);
+          })
+
+          //vue bug?设置length为0没找到数据不更新view
+          if (searchResult.datas.length == 0) {
+            searchResult.datas = []
+          }
+          var layer = BaseMap.getLayerByName('findResource');
+          layer.getSource().clear();
+          layer.getSource().addFeatures(resorces);
+          if ($("#left_side").hasClass('fold')) {
+            leftSideMove();
+          }
+        },
+        error: function (err) {}
+      })
+    }
+ 
+     
+  </script>
+</head>
+
+<body>
+  <div id="map" style="margin:0px;padding:0px;   overflow: hidden;">
+
+  </div>
+
+  <script src="public/js/jquery-3.2.1.min.js"></script>
+  <script src="public/js/ol/ol3.js"></script>  
+
+  <script type="text/javascript">
+    var searchResult, searchPageOption = {
+      current: 1,
+      showItem: 10,
+      allpage: 0
+    };
+    var pointsStyle = [];
+    var map = null;
+    $(function () {
+
+      //设置map信息
+      setMapAttr();
+      //设置数据
+      getAllCameraResource(); 
+ 
+    })
+    var map, layerVector ;
+    function setMapAttr() {
+      var source_gaode =
+        'http://webst0{1-4}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}';
+      /*BaseMap.initMap({
+        map: 'map',
+        sourceURL: source_gaode,
+        coordinate: [109.5983940000, 27.9479330000], //ol.proj.transform( [109.5983940000, 27.9479330000], 'EPSG:4326', 'EPSG:3857'),
+        proj: 'EPSG:4326' //'EPSG:4326'3857
+      })*/
+      map = new ol.Map({
+            target: 'map',    
+            projection: 'EPSG:4326',
+            view: new ol.View({
+                center: [109.5983940000, 27.9479330000],
+                zoom: 14,
+                projection:'EPSG:4326', 
+            })
+        });
+       var  mapLayer = new ol.layer.Tile({
+            name: 'bottomMap',
+            source: new ol.source.XYZ({
+                url:source_gaode
+            }),
+            projection:'EPSG:4326'
+        });
+        map.addLayer(mapLayer);
+        
+      // BaseMap.initMapControl(); 
+      // BaseMap.initMapEvent();
+       layerVector = new ol.layer.Vector({
+            name: 'camera',
+            source: new ol.source.Vector()
+        })  
+        map.addLayer(
+            layerVector
+        )
+      //创建最基本监控资源图层 
+      /*, new ol.style.Style({
+          image: new ol.style.Icon({
+              src: 'public/img/resouce/camera.png',
+              scale: 0.5,
+              snapToPixel: true,
+              anchor: [0.5, 1]
+          })
+      })*/
+      //创建查询资源结果图层
+     
+    }
+  </script>
+</body>
+
+</html>

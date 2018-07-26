@@ -1,0 +1,5 @@
+{
+  "extends": "eslint-config-egg",
+  "linebreak-style": [0 ,"error", "windows"]
+}
+

@@ -1,0 +1,43 @@
+*{
+    margin: 0px;
+    padding: 0px ; 
+    font-size:12px; 
+   font-family:新宋体,宋体,微软雅黑,Tahoma,Verdana
+}
+/*vue分页*/
+li {
+    list-style: none;
+}
+
+a {
+    text-decoration: none;
+}
+
+.pagination {
+    position: relative;
+
+}
+
+.pagination li {
+    display: inline-block;
+    margin: 0 5px;
+}
+
+.pagination li a {
+    padding: .3rem 0.5rem;
+    display: inline-block;
+    border: 1px solid #ddd;
+    background: #fff;
+
+    color: #0E90D2;
+}
+
+.pagination li a:hover {
+    background: #eee;
+}
+
+.pagination li.active a {
+    background: #0E90D2;
+    color: #fff;
+}
+/*vue分页*/

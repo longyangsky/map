@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link rel="stylesheet" href="public/css/ol.css" type="text/css">
+    <link rel="stylesheet" href="public/css/bootstrap.min.css" type="text/css">
+    <link rel="stylesheet" href="public/css/base.css" type="text/css">
+    <link rel="stylesheet" href="public/css/index.css" type="text/css">
+    <link rel="stylesheet" href="public/js/video-js/video-js-cdn.min.css">
+    <style type="text/css">
+        #map {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            background: url(public/img/bg_earth.png)
+        }
+    </style>
+    <script type="text/javascript">
+        function disableBodySubmit() {
+            $(this).keydown(function (e) {
+                var key = window.event ? e.keyCode : e.which;
+                if (key.toString() == "13") {
+                    return false;
+                }
+            });
+        }
+        var query = {};
+        //得到所有数据
+        function getAllCameraResource() {
+            $.get({
+                url: "/api/v1/index/find",
+                data: {
+                    type: '摄像机',
+                    accesstoken: $("#token").val()
+                },
+                dataType: "json",
+                success: function (data) {
+                    var resorces = [];
+                    data.forEach(function (resource) {
+                        var anchor = new ol.Feature({
+                            type: 'camera',
+                            code: resource.code,
+                            name: resource.name,
+                            geometry: new ol.geom.Point(resource.loc.coordinates)
+                        });
+                        /*anchor.setStyle(new ol.style.Style({  //在线 
+
+                        }))*/
+                        anchor.setStyle(function (resolution) {
+                            if (BaseMap.map.getView().getZoom() >= 16) {
+                                return pointsStyle[1](resolution);
+                            }
+                            return pointsStyle[0]
+                        });
+                        resorces.push(anchor);
+                    })
+                    var layer = BaseMap.getLayerByName('camera');
+                    layer.getSource().clear();
+                    layer.getSource().addFeatures(resorces);
+                },
+                error: function (data) {
+                    alertMessage(data.responseJSON.message)
+                }
+            })
+        }
+        function alertMessage(message) {
+            $("#alert #message").text(message)
+            $("#alert").show();
+        }
+        //查询数据
+        function searchResource() {
+            var resourceName = $('#resourceName').val();
+
+            query = {};
+            query.accesstoken = $("#token").val();
+            // alert($('#token').val())
+            // query.token=$('#token').val();
+            if (resourceName.length > 0) {
+                query.name = resourceName;
+            }
+            $.get({
+                url: '/api/v1/index/findListCount',
+                dataType: "json",
+                data: query,
+                success: function (data) {
+                    $('#reslutCount').text(data.count);
+                    searchPageOption.allpage = data.count > 0 ? parseInt(data.count / searchPageOption.showItem) +
+                        1 : 0;
+                },
+                error: function (data) {
+                    // alert(data.responseJSON.message)
+                }
+            })
+            query.pageIndex = 1;
+            getSearchResource()
+
+        }
+        //空间
+        function getSearchResource() {
+            searchResult.datas.length = 0;
+            $.get({
+                url: "/api/v1/index/findList",
+                dataType: "json",
+                data: query,
+                success: function (data) {
+                    var resorces = [];
+                    data.list.forEach(function (resource, index) {
+
+                        searchResult.datas.push(resource);
+                        var resourceFeature = new ol.Feature({
+                            index: index,
+                            type: 'camera',
+                            code: resource.code,
+                            name: resource.name,
+                            geometry: new ol.geom.Point(resource.loc.coordinates)
+                        })
+
+                        resourceFeature.setId(resource.zyid)
+                        resourceFeature.setStyle(new ol.style.Style({
+                            image: new ol.style.Icon({
+                                src: 'public/img/mapPoints/u_icon_focus_' + (
+                                    index) + '.png',
+                                scale: 0.5,
+                                snapToPixel: true,
+                                anchor: [0.5, 1]
+                            })
+                        }))
+                        resorces.push(resourceFeature);
+                    })
+
+                    //vue bug?设置length为0没找到数据不更新view
+                    if (searchResult.datas.length == 0) {
+                        searchResult.datas = []
+                    }
+                    var layer = BaseMap.getLayerByName('findResource');
+                    layer.getSource().clear();
+                    layer.getSource().addFeatures(resorces);
+                    if ($("#left_side").hasClass('fold')) {
+                        leftSideMove();
+                    }
+                },
+                error: function (data) {
+                    alertMessage(data.responseJSON.message);
+                }
+            })
+        }
+
+        function geoFind(type, center, radius) {
+            query = {}
+            switch (type) {
+                case "Point":
+                    query.geoType = BaseMap.lastClickFeature.geoType;
+                    query.coordinates = BaseMap.lastClickFeature.coordinates.join(',');
+                    query.distance = $("#geoDistance").val();
+                    break;
+                case "Circle":
+                    query.geoType = 'Circle';
+                    query.coordinates = center.join(',');
+                    query.radius = radius;
+                    break;
+                case "Box":
+                case "Polygon":
+                    query.geoType = 'Polygon';
+                    query.coordinates = center;
+                    break;
+                default:
+                    return;
+            }
+            query.accesstoken = $("#token").val();
+            $.get({
+                url: '/api/v1/index/findListCount',
+                dataType: 'json',
+                data: query,
+                success: function (data) {
+                    $('#reslutCount').text(data.count);
+                    searchPageOption.allpage = data.count > 0 ? parseInt(data.count / searchPageOption.showItem) +
+                        1 : 0;
+                },
+                error: function (data) {
+                    alertMessage(data.responseJSON.message);
+                }
+            })
+            query.pageIndex = 1;
+            getSearchResource()
+        }
+
+        function leftSideMove() {
+            var left_side = $("#left_side");
+            if (left_side.hasClass('unfold')) {
+                left_side.animate({
+                    left: "-270px"
+                }, 300).addClass('fold').removeClass('unfold');
+            } else {
+                left_side.animate({
+                    left: "0px"
+                }, 300).addClass('unfold').removeClass('fold');
+            }
+        }
+
+        function listResourceMouseOver(element) {
+            $(element).css("background-color", "#eee");
+        }
+
+        function listResourceMouseOut(element) {
+            $(element).css("background-color", "#fff");
+        }
+
+        function pageInit() {
+            $('#left_side').height($(document).height() - 52);
+            $("#resourceName").keypress(function (e) {
+                if (e.which == 13) {
+                    $("#btnSearch").click();
+                    return false;
+                }
+            })
+        }
+
+        function getCurrentView() {
+            var strPolygon = BaseMap.getViewCoordinates([0, 51]).join(";");
+            geoFind('Polygon', strPolygon, 0)
+        }
+
+        //开始绘制
+        var drawInteraction = null;
+
+        function addDrawGeoFind(type) {
+            removeDrawInteraction();
+            drawInteraction = BaseMap.addDrawInteractionArea(type, function (center, radius) {
+                geoFind(type, center, radius)
+            })
+        }
+
+        function removeDrawInteraction() {
+            if (drawInteraction != null) {
+                BaseMap.map.removeInteraction(drawInteraction);
+            }
+            Measure.removeDraw();
+        }
+
+        function sotpDrawInteraction() {
+            removeDrawInteraction();
+            Measure.removeDrawEvent();
+        }
+
+        function clearDrawData() {
+            BaseMap.getLayerByName('interactionArea').getSource().clear();
+            Measure.removeDrawTooltip();
+        }
+
+        function measure(type) {
+
+            removeDrawInteraction();
+            if (type === 'line') {
+                Measure.getLine()
+            } else {
+                Measure.getArea()
+            }
+        }
+        var player = null;
+        function playVideo(resouceCode) {
+            player = videojs('hlsVideo');
+            var resouceCode=BaseMap.lastClickResourceCode; 
+            var src = "http://39.108.70.5:10080/"+resouceCode+"/0.m3u8"; 
+            player.src({
+                src: src,
+                type: 'application/x-mpegURL'
+            });
+            player.play();
+
+        }
+    </script>
+</head>
+
+<body>
+    <!--<div style="position: absolute;top: 100px;width: 800px;height: 800px;z-index: 111111111;">
+            <video id="hlsVideo" width="400" class="video-js vjs-default-skin fillWidth"
+            controls>
+            </video> 
+            <button type="button" onclick="playVideo('jxj04')" class="btn btn-primary btn-xs">播放</button>
+    </div>-->
+    <div id="map" style="margin:0px;padding:0px;   overflow: hidden;">
+        <div id="mouse-position">
+        </div>
+
+        <div id="popup" class="ol-popup">
+            <a href="#" id="popup-closer" class="ol-popup-closer"></a>
+            <div id="popup-content"> </div>
+          
+            <video id="hlsVideo" width="500" class="video-js vjs-default-skin fillWidth" controls>
+            </video>
+            <script src="public/js/video-js/video.js"></script>
+            <script src="public/js/video-js//videojs-contrib-hls.js"></script>
+            <div style="margin-top: 15px;">
+                附近
+                <input id="geoDistance" type="text" value="100" width="50px" placeholder="" />米资源
+                <button type="button" onclick="geoFind('Point')" class="btn btn-primary btn-xs">查询</button>
+                <button type="button" onclick="playVideo()" class="btn btn-primary btn-xs">播放</button>
+            </div>
+        </div>
+    </div>
+    <div style=" position: absolute;left:0;top:0;width:100%;background: #fff;box-shadow:2px 0px 2px #aaaaaa;">
+        <form class="navbar-form navbar-left">
+            <div class="input-group">
+                <input type="text" id="resourceName" style="width: 300px;" class="form-control" placeholder="查询资源名称">
+                <span class="input-group-btn">
+                    <button id="btnSearch" class="btn btn-default" type="button" onclick="searchResource()">
+                        <span class="glyphicon glyphicon-search" aria-hidden="true"></span>
+                    </button>
+                </span>
+            </div>
+        </form>
+        <input type="hidden" id="token" value="{{user.token}}"> {% if (interfaceType!='web') %}
+
+        <div class="pull-right" style="padding-top: 10px;padding-right: 15px;font-weight: bold">
+            <img src="public/img/index/user.png">
+        </div>
+        <div class="pull-right" style="padding-top: 10px;padding-right: 5px;font-weight: bold">
+            <div>{{user.QYMINGCHENG}}/{{user.ZZJGMINGCHENG}}{% if (user.BMMINGCHENG!=null) %}/{{user.BMMINGCHENG}}{% endif %}
+            </div>
+            <div class="pull-right">{{user.YHXINGMING}}</div>
+        </div>
+        {%endif%}
+    </div>
+
+    <div id="alert" style=" position: absolute; left: 50%; top: 40%;display: none;" class="alert alert-danger ">
+        <a href="#" class="close" onclick="$('#alert').hide();">
+            &times;
+        </a>
+        <strong>警告！</strong>
+        <span id='message'></span>。
+    </div>
+    <div id="left_side" class="left fold">
+        <div id="searchResult">
+            <p style="text-align: center;font-size: 16px;font-weight: bold;line-height: 32px;margin-top: 16px;">搜索</p>
+            <div>
+                <div style="background-color: #eee;padding: 2px;padding-left: 5px;">共找到
+                    <span style="color: #ff0000;font-size: 12px;" id="reslutCount"></span>条结果</div>
+                <div id='ulResult' style="overflow: auto;height: 400px;">
+                    <ul id="searchList">
+                        <li v-for="(data,index) in datas" v-on:click="pointClick(data.zyid)" v-on:mouseout="setPointMouseOutBg(data.zyid)" v-on:mouseover="setPointMouseOverBg(data.zyid)">
+                            <i class="resouceIcon" v-bind:style="setPointBg(index)">
+                            </i>
+                            <div class="resouce">
+                                <span class="name">${data.name}</span>
+                                <span class="info">区域：${data.area_name}</span>
+                                <span class="info">编码：${data.code}</span>
+                                <span class="info">类型：${data.category}</span>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div id="app">
+            <page></page>
+        </div>
+
+        <div class="sidebar" onclick="leftSideMove()">
+        </div>
+    </div>
+    <div id="mapToolBar">
+
+        <div class="btn-group">
+            <button type="button" class="btn btn-default btn-xs dropdown-toggle" data-toggle="dropdown">查询
+                <span class="caret"></span>
+            </button>
+            <ul class="dropdown-menu">
+                <li>
+                    <a href="#" onclick="addDrawGeoFind('Circle')">圆形框选</a>
+                </li>
+                <li>
+                    <a href="#" onclick="addDrawGeoFind('Box')">矩形框选</a>
+                </li>
+                <li class="divider"></li>
+                <li>
+                    <a href="#" onclick="getCurrentView()">可视范围</a>
+                </li>
+            </ul>
+        </div>
+        <div class="btn-group">
+            <button type="button" class="btn btn-default btn-xs dropdown-toggle" data-toggle="dropdown">工具
+                <span class="caret"></span>
+            </button>
+            <ul class="dropdown-menu" role="menu">
+                <li>
+                    <a href="#" onclick="measure('line')">测量</a>
+                </li>
+                <li>
+                    <a href="#" onclick="measure('area')">测面</a>
+                </li>
+            </ul>
+        </div>
+        <button type="button" onclick="sotpDrawInteraction()" class="btn btn-xs">
+            停止绘制
+        </button>
+        <button type="button" onclick="clearDrawData()" class="btn btn-xs">
+            清空绘制
+        </button>
+        <button type="button" onclick="BaseMap.setCenter()" class="btn btn-xs">
+            复位
+        </button>
+    </div>
+
+
+    <script src="public/js/jquery-3.2.1.min.js"></script>
+    <script src="public/js/ol/ol.js"></script>
+    <script src="public/js/ol/baseMap.js"></script>
+    <script src="public/js/ol/measure.js"></script>
+    <link rel="stylesheet" href="public/js/ol/measure.css">
+    <script src="public/js/vue.min.js"></script>
+    <script src="public/js/vuePager.js"></script>
+    <script src="public/js/bootstrap.min.js"></script>
+    <script type="text/x-template" id="page">
+        <ul class="pagination">
+            <li v-show="pageOption.current != 1" @click="pageOption.current-- && goto(pageOption.current)">
+                <a href="#">上一页</a>
+            </li>
+            <li v-for="index in pages" @click="goto(index)" :class="{'active':pageOption.current == index}" :key="index">
+                <a href="#">${index}</a>
+            </li>
+            <li v-show="pageOption.allpage != pageOption.current && pageOption.allpage != 0 " @click="pageOption.current++ && goto(pageOption.current++)">
+                <a href="#">下一页</a>
+            </li>
+        </ul>
+    </script>
+    <script type="text/javascript">
+        var searchResult, searchPageOption = {
+            current: 1,
+            showItem: 10,
+            allpage: 0
+        };
+        var pointsStyle = [];
+        var map = null;
+        $(function () {
+
+            pageInit();
+            //设置map信息
+            setMapAttr();
+            //设置数据
+            getAllCameraResource();
+            //绘制工具
+            Measure.map = BaseMap.map;
+            Measure.proj = BaseMap.attribute.proj;
+
+            //Measure.crateToolEvent()
+            //VUE分页数据绑定
+            VuePager.createPageComponent('page', searchPageOption);
+            var vm = new Vue({
+                el: '#app',
+            })
+            searchResult = new Vue({
+                el: '#ulResult',
+                data: {
+                    datas: [],
+                    count: 0
+                },
+                delimiters: ['${', '}'],
+                methods: {
+                    setPointBg: function (index) {
+                        return {
+                            background: 'url("public/img/mapPoints/u_icon_focus_' + index +
+                                '.png") no-repeat',
+                            'background-size': ' contain'
+                        }
+                    },
+                    setPointMouseOutBg: function (resourceId) {
+                        var el = $(event.currentTarget);
+                        var url = el.find("i").css("background");
+                        if (url.indexOf('u_icon_focus_') >= 0) {
+                            return;
+                        }
+                        el.css("background", "#fff")
+                        var startIndex = url.indexOf('s_icon_focus_');
+                        var endIndex = url.indexOf('.png');
+                        var fileName = url.substr(startIndex, endIndex - startIndex);
+                        fileName = 'u_' + fileName.substr(2, fileName.length - 1) + '.png';
+                        el.find("i").css({
+                            "background": 'url("public/img/mapPoints/' + fileName,
+                            'background-size': 'contain',
+                            'background-repeat': 'no-repeat'
+                        })
+                        this.changeMapPointBg(resourceId, false);
+
+                    },
+                    setPointMouseOverBg: function (resourceId) {
+                        var el = $(event.currentTarget);
+                        var url = el.find("i").css("background");
+                        if (url.indexOf('s_icon_focus_') >= 0) {
+                            return;
+                        }
+                        el.css("background", "#eee")
+                        var startIndex = url.indexOf('icon_focus_');
+                        var endIndex = url.indexOf('.png');
+                        var fileName = url.substr(startIndex, endIndex - startIndex);
+                        fileName = 's_' + fileName + '.png';
+                        el.find("i").css({
+                            "background": 'url("public/img/mapPoints/' + fileName,
+                            'background-size': 'contain',
+                            'background-repeat': 'no-repeat'
+                        })
+                        this.changeMapPointBg(resourceId, true);
+
+                    },
+                    changeMapPointBg: function (resourceId, seleceted) {
+                        var resourceFeature = BaseMap.getLayerByName('findResource').getSource().getFeatureById(
+                            resourceId);
+                        if (seleceted) {
+                            fileName = 's_icon_focus_' + resourceFeature.get('index') + '.png';
+                        } else {
+                            fileName = 'u_icon_focus_' + resourceFeature.get('index') + '.png';
+                        }
+                        resourceFeature.setStyle(new ol.style.Style({
+                            image: new ol.style.Icon({
+                                src: 'public/img/mapPoints/' + fileName,
+                                scale: 0.5,
+                                snapToPixel: true,
+                                anchor: [0.5, 1]
+                            })
+                        }))
+
+                    },
+                    pointClick: function (resourceId) {
+                        var resourceFeature = BaseMap.getLayerByName('findResource').getSource().getFeatureById(
+                            resourceId);
+                        BaseMap.setCenter(resourceFeature.getGeometry().flatCoordinates);
+                        //    BaseMap.map.getView().setZoom(16)
+
+                        // BaseMap.map.getView().setCenter(resourceFeature.getGeometry().flatCoordinates)
+                        BaseMap.popupOverlay(0, resourceFeature);
+                    }
+                }
+            })
+
+            pointsStyle = [new ol.style.Style({
+                image: new ol.style.Icon({
+                    src: 'public/img/resouce/camera.png',
+                    scale: BaseMap.map.getView().getZoom() / 35
+                })
+            }),
+            function (resolution) {
+                return new ol.style.Style({
+                    image: new ol.style.Icon({
+                        src: 'public/img/resouce/camera.png',
+                        scale: [0.4]
+                    }),
+                    text: new ol.style.Text({
+                        text: resolution.values_.name,
+                        fill: new ol.style.Fill({
+                            color: '#222'
+                        }),
+                        font: 'bold 12px 宋体 ',
+                        offsetY: 12
+                        // stroke: new ol.style.Stroke({ color: "#00f", width:   parseInt(dom.outlineWidth.value, 10)  })
+                    })
+                })
+            }
+            ]
+
+        })
+
+        function setMapAttr() {
+            var center = [112.9439592361, 28.2705960387];
+            var source_gaode =
+                'http://webst0{1-4}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}';
+            BaseMap.initMap({
+                map: 'map',
+                sourceURL: source_gaode,
+                coordinate: center, //ol.proj.transform( [109.5983940000, 27.9479330000], 'EPSG:4326', 'EPSG:3857'),
+                //coordinate: center.split(','), 
+                proj: 'EPSG:4326' //'EPSG:4326'3857
+            })
+            BaseMap.initMapControl();
+            BaseMap.initMapEvent();
+
+            //创建最基本监控资源图层
+            var layer = BaseMap.addLayerVector('camera');
+            /*, new ol.style.Style({
+                image: new ol.style.Icon({
+                    src: 'public/img/resouce/camera.png',
+                    scale: 0.5,
+                    snapToPixel: true,
+                    anchor: [0.5, 1]
+                })
+            })*/
+            //创建查询资源结果图层
+            var layer = BaseMap.addLayerVector('findResource', null);
+            //创建气泡
+            BaseMap.addOverlay(
+                $('#popup')[0],
+                $('#popup-content')[0],
+                $('#popup-closer')[0]
+            )
+        }
+    </script>
+</body>
+
+</html>
